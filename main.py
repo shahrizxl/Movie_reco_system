@@ -46,7 +46,7 @@ def fetch_poster(title):
 
 # Recommendation logic
 def recommend(movie_name):
-    # Try to find exact match (case-insensitive)
+    # First try exact match
     exact_matches = movies[movies['title'].str.lower() == movie_name.lower()]
 
     recommended_titles = []
@@ -55,28 +55,36 @@ def recommend(movie_name):
     if not exact_matches.empty:
         exact_movie_index = exact_matches['index'].values[0]
         exact_title = exact_matches['title'].values[0]
-        recommended_titles.append(exact_title)
-        poster_urls.append(fetch_poster(exact_title))
     else:
-        # Use close match if exact not found
-        movie_list = movies['title'].tolist()
-        close_matches = difflib.get_close_matches(movie_name, movie_list, n=1)
-        if not close_matches:
-            return [], []
+        # Try partial match
+        partial_matches = movies[movies['title'].str.lower().str.contains(movie_name.lower())]
 
-        exact_movie_index = movies[movies['title'] == close_matches[0]]['index'].values[0]
-        exact_title = close_matches[0]
-        recommended_titles.append(exact_title)
-        poster_urls.append(fetch_poster(exact_title))
+        if not partial_matches.empty:
+            exact_movie_index = partial_matches.iloc[0]['index']
+            exact_title = partial_matches.iloc[0]['title']
+        else:
+            # Fallback to fuzzy match
+            movie_list = movies['title'].tolist()
+            close_matches = difflib.get_close_matches(movie_name, movie_list, n=1)
 
-    # Now get similar movies (excluding the one we already added)
+            if not close_matches:
+                return [], []
+
+            exact_title = close_matches[0]
+            exact_movie_index = movies[movies['title'] == exact_title]['index'].values[0]
+
+    # Add the matched title first
+    recommended_titles.append(exact_title)
+    poster_urls.append(fetch_poster(exact_title))
+
+    # Get similar movies (excluding the matched one)
     similarity_scores = list(enumerate(similarity[exact_movie_index]))
     sorted_similar_movies = sorted(similarity_scores, key=lambda x: x[1], reverse=True)
 
     count = 0
     for i, _ in sorted_similar_movies:
         title = movies.iloc[i]['title']
-        if title != exact_title:
+        if title != exact_title and title not in recommended_titles:
             recommended_titles.append(title)
             poster_urls.append(fetch_poster(title))
             count += 1
@@ -84,6 +92,7 @@ def recommend(movie_name):
             break
 
     return recommended_titles, poster_urls
+
 
 # Routes
 @app.route('/')
